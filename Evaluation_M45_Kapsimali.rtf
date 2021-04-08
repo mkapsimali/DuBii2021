@@ -1,0 +1,282 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2577
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww12760\viewh11520\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 ---\
+title: "Examen final Modules 4 et 5"\
+author: "Marika Kapsimali"\
+date: "`r format(Sys.time(), '%d %B, %Y')`"\
+output:\
+  pdf_document:\
+    toc: yes\
+    toc_depth: '3'\
+  html_document:\
+    code_folding: hide\
+    css:\
+    - css/style.css\
+    - https://use.fontawesome.com/releases/v5.0.9/css/all.css\
+    includes:\
+      after_body: resources/footer.html\
+    number_sections: no\
+    self_contained: yes\
+    toc: yes\
+    toc_depth: 3\
+    toc_float: yes\
+csl: resources/biomed-central.csl\
+subtitle: DUBii 2021\
+bibliography: resources/biblio.bib\
+---\
+\
+```\{r setup, include=FALSE\}\
+knitr::opts_chunk$set(eval=FALSE, echo =TRUE, cache = FALSE, message = FALSE, warning = FALSE, cache.lazy = FALSE,\
+                      fig.height = 3.5, fig.width = 10.5)\
+```\
+\
+# Consignes \{-\}\
+\
+Compl\'e9tez ce document en remplissant les chunks vides pour \'e9crire le code qui vous a permis de r\'e9pondre \'e0 la question. Les r\'e9ponses attendant un r\'e9sultat chiffr\'e9 ou une explication devront \'eatre ins\'e9r\'e9s entre le balises html `code`. Par exemple pour r\'e9pondre \'e0 la question suivante :\
+\
+    La bioinfo c'est : <code>MERVEILLEUX</code>.\
+    \
+N'h\'e9sitez pas \'e0 commenter votre code, enrichier le rapport en y ins\'e9rant des r\'e9sultats ou des graphiques/images pour expliquer votre d\'e9marche. N'oubliez pas les **bonnes pratiques** pour une recherche **reproductible** !\
+Nous souhaitons \'e0 minima que l'analyse soit reproductible sur le cluster de l'IFB.\
+\
+# Introduction \{-\}\
+\
+Vous allez travailler sur des donn\'e9es de res\'e9quen\'e7age d'un g\'e9nome bact\'e9rien : _Bacillus subtilis_. Les donn\'e9es sont issues de cet article :\
+\
+* [Complete Genome Sequences of 13 Bacillus subtilis Soil Isolates for Studying Secondary Metabolite Diversity](https://mra.asm.org/content/9/2/e01406-19)\
+\
+# Analyses\
+\
+## Organisation de votre espace de travail\
+\
+```\{bash\}\
+ssh -XY mkapsimali@core.cluster.france-bioinformatique.fr\
+# go to dir projects/dubii2021/mkapsimali and create dir projet_M45\
+cd ../../\
+cd projects/dubii2021/mkapsimali\
+mkdir projet_M45\
+cd projet_M45\
+mkdir QC\
+mkdir FASTQ\
+mkdir Cleaning\
+mkdir Mapping\
+ls\
+```\
+\
+## T\'e9l\'e9chargement des donn\'e9es brutes\
+\
+R\'e9cup\'e9rez les fichiers FASTQ issus du run **SRR10390685** gr\'e2ce \'e0 l'outil <strong class="tool">sra-tools</strong> @sratoolkit\
+\
+```\{bash\}\
+#recover FASTQ files\
+module load sra-tools\
+srun --cpus-per-task=6 fasterq-dump --split-files -p SRR10390685 --outdir FASTQ\
+#verify files are in dir FASTQ\
+cd FASTQ\
+ls\
+#zip files fastq\
+srun gzip *.fastq\
+#visualize format with first 8 lines\
+zcat SRR10390685_1.fastq.gz | head -8\
+zcat SRR10390685_2.fastq.gz | head -8\
+```\
+\
+Combien de reads sont pr\'e9sents dans les fichiers R1 et R2 ?\
+\
+\
+```\{bash\}\
+#calculate number of reads\
+zcat SRR10390685_1.fastq.gz | echo $((`wc -l`/4))\
+zcat SRR10390685_2.fastq.gz | echo $((`wc -l`/4))\
+```\
+\
+Les fichiers FASTQ contiennent <code>7066055</code> reads.\
+\
+T\'e9l\'e9chargez le g\'e9nome de r\'e9f\'e9rence de la souche ASM904v1 de _Bacillus subtilis_ disponible \'e0 [cette adresse](https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.fna.gz)\
+\
+```\{bash\}\
+#recover ref. genome in dir projet_M45\
+cd ../\
+srun wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.fna.gz\
+# verify ref. genome file \
+ls\
+\
+```\
+\
+Quelle est la taille de ce g\'e9nome ?\
+\
+```\{bash\}\
+#unzip ref. genome file to calculate size\
+gunzip GCF_000009045.1_ASM904v1_genomic.fna\
+#visualize start and end to calculate nucleotides per line in the file\
+head -n 3 GCF_000009045.1_ASM904v1_genomic.fna\
+tail -n 3 GCF_000009045.1_ASM904v1_genomic.fna\
+#80 nucleotides per line except last line 6 nucleotides. First line:name of the sequence\
+#Total number of lines:\
+wc -l GCF_000009045.1_ASM904v1_genomic.fna\
+#52697\
+#calculate number of nucleotides:\
+echo "$((52695 * 80 + 6))"\
+```\
+\
+La taille de ce g\'e9nome est de <code>4215606</code> paires de bases.\
+\
+T\'e9l\'e9chargez l'annotation de la souche ASM904v1 de _Bacillus subtilis_ disponible \'e0 [cette adresse](https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.gff.gz)\
+\
+```\{bash\}\
+srun wget https://ftp.ncbi.nlm.nih.gov/genomes/all/GCF/000/009/045/GCF_000009045.1_ASM904v1/GCF_000009045.1_ASM904v1_genomic.gff.gz\
+```\
+\
+Combien de g\'e8nes sont connus pour ce g\'e9nome ?\
+\
+```\{bash\}\
+#unzip\
+gunzip GCF_000009045.1_ASM904v1_genomic.gff\
+head GCF_000009045.1_ASM904v1_genomic.gff\
+cut -f 3 GCF_000009045.1_ASM904v1_genomic.gff | grep "gene" |wc -l\
+cut -f 3 GCF_000009045.1_ASM904v1_genomic.gff | grep "pseudogene" |wc -l   \
+```\
+\
+<code>4536</code> g\'e8nes dont <code>88</code> pseudog\'e8nes sont recens\'e9s dans le fichier d'annotation.\
+\
+## Contr\'f4le qualit\'e9\
+\
+Lancez l'outil <strong class="tool">fastqc</strong> @fastqc d\'e9di\'e9 \'e0 l'analyse de la qualit\'e9 des bases issues d'un s\'e9quen\'e7age haut-d\'e9bit\
+\
+```\{bash\}\
+module load fastqc\
+srun --cpus-per-task 8 fastqc FASTQ/SRR10390685_1.fastq.gz -o QC/ -t 8\
+srun --cpus-per-task 8 fastqc FASTQ/SRR10390685_2.fastq.gz -o QC/ -t 8\
+```\
+\
+La qualit\'e9 des bases vous para\'eet-elle satisfaisante ? Pourquoi ?\
+\
+- [x] Oui\
+\
+car <code>the boxplots and mean values are mostly above score 30</code> comme le montre <code>the per base quality graph </code>\
+\
+Lien vers le [rapport MulitQC](https://github.com/mkapsimali/DuBii2021/blob/master/SRR8082143_1_fastqc.html)(https://github.com/mkapsimali/DuBii2021/blob/master/SRR8082143_2_fastqc.html)\
+\
+Est-ce que les reads d\'e9pos\'e9s ont subi une \'e9tape de nettoyage avant d'\'eatre d\'e9pos\'e9s ? Pourquoi ?\
+\
+- [x] Oui\
+\
+\
+car <code>N content accross all bases and adapter content are zero</code>\
+\
+Quelle est la profondeur de s\'e9quen\'e7age (calcul\'e9e par rapport \'e0 la taille du g\'e9nome de r\'e9f\'e9rence) ?\
+\
+The number of reads is 7066055 (see fastp.json below)\
+The number of bases is approximately 150 based on the 2 QC sequencing reports.\
+The reference genome size is 4215606bp\
+```\{bash\}\
+echo "$(((7066055 * 150 * 2)/4215606))"\
+```\
+\
+La profondeur de s\'e9quen\'e7age est de : <code>502</code> X.\
+\
+## Nettoyage des reads\
+\
+Vous voulez maintenant nettoyer un peu vos lectures. Choisissez les param\'e8tres de <strong class="tool">fastp</strong> @fastp qui vous semblent ad\'e9quats et justifiez-les.\
+\
+```\{bash\}\
+module load fastp\
+srun --cpus-per-task 8 fastp --in1 FASTQ/SRR10390685_1.fastq.gz --in2 FASTQ/SRR10390685_2.fastq.gz --out1 Cleaning/SRR10390685_1.cleaned_filtered.fastq.gz --out2 Cleaning/SRR10390685_2.cleaned_filtered.fastq.gz --html Cleaning/fastp.html --thread 8 --cut_mean_quality 30 --cut_window_size 8 --length_required 100 --cut_tail --json Cleaning/fastp.json\
+#calculate loss of reads after filtering\
+echo "$(((100*(7066055-6777048))/7066055))"\
+```\
+\
+Les param\'e8tres suivants ont \'e9t\'e9 choisis : \
+\
+\
+|   Parametre    | Valeur     | Explication |\
+\
+cut_mean_quality      30      to keep only very good quality of bases\
+length_required       100     reads shorter than 100 are discarded (smaller size too short for good quality mapping)\
+cut_tail                      move a sliding window from tail (3') to front, drop the bases in the window if its mean quality < threshold, stop otherwise.\
+cut_window_size       8       the window size option for cut_tail (sequencing of this extremity can be of bad quality)\
+\
+Ces param\'e8tres ont permis de conserver <code>6777048</code> reads pair\'e9s, soit une perte de <code>4</code>% des reads bruts.\
+\
+\
+## Alignement des reads sur le g\'e9nome de r\'e9f\'e9rence\
+\
+Maintenant, vous allez aligner ces reads nettoy\'e9s sur le g\'e9nome de r\'e9f\'e9rence \'e0 l'aide de <strong class="tool">bwa</strong> @bwa et <strong class="tool">samtools</strong> @samtools.\
+\
+```\{bash\}\
+#move ref.genome file in Mapping dir for simplicity\
+mv GCF_000009045.1_ASM904v1_genomic.fna Mapping/GCF_000009045.1_ASM904v1_genomic.fna\
+cd Mapping\
+module load bwa\
+#Index FASTA file with bwa index\
+srun bwa index GCF_000009045.1_ASM904v1_genomic.fna\
+#Map reads with bwa mem\
+srun --cpus-per-task=32 bwa mem GCF_000009045.1_ASM904v1_genomic.fna ../Cleaning/SRR10390685_1.cleaned_filtered.fastq.gz ../Cleaning/SRR10390685_2.cleaned_filtered.fastq.gz -t 32 > SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sam\
+\
+module load samtools\
+#convert SAM file to BAM file with samtools view\
+srun --cpus-per-task=8 samtools view --threads 8 SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sam -b > SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.bam\
+#Sort the BAM file with samtools sort\
+srun samtools sort SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.bam -o SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam\
+#Index the BAM file with samtools index\
+srun samtools index SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam\
+```\
+\
+Combien de reads ne sont pas mapp\'e9s ?\
+\
+```\{bash\}\
+srun samtools flagstat SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam >SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam.flagstat\
+#view stats\
+cat SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam.flagstat\
+#calculate\
+echo "$((13571369-12826829))"\
+```\
+\
+\
+<code>744540</code> reads ne sont pas mapp\'e9s.\
+\
+## Croisement de donn\'e9es\
+\
+Calculez le nombre de reads qui chevauchent avec au moins 50% de leur longueur le g\'e8ne _trmNF_ gr\'e2ce \'e0 l'outil <strong class="tool">bedtools</strong> @bedtools:\
+\
+```\{bash\}\
+#go to Projet_45 dir where there is GCF_000009045.1_ASM904v1_genomic.gff\
+cd ../\
+#find line with trmNF gene\
+grep trmNF GCF_000009045.1_ASM904v1_genomic.gff\
+#Choose line with trmNF where 3rd column is 'gene' and write to output file. \
+grep trmNF GCF_000009045.1_ASM904v1_genomic.gff |awk '$3=="gene"' > trmNF_gene.gff\
+module load bedtools\
+\
+#Get genomic sequence of the gene with bedtools getfasta \
+srun bedtools getfasta -fi Mapping/GCF_000009045.1_ASM904v1_genomic.fna -bed trmNF_gene.gff > trmNF_gene.fasta\
+#to verify presence of trmNF_gene.fasta\
+ls\
+#to have a look at the sequence\
+head trmNF_gene.fasta\
+#Calculate the number of reads of which at least 50% overlaps with the gene trmNF with bedtools intersect and write to output file\
+srun bedtools intersect -f 0.50 -b trmNF_gene.gff -a Mapping/SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam > result_intersection.bam\
+#sort the output file and see statistics\
+srun samtools sort result_intersection.bam -o result_intersection.sort.bam\
+srun samtools flagstat result_intersection.sort.bam > result_intersection.sort.bam.flagstat\
+cat result_intersection.sort.bam.flagstat\
+```\
+\
+<code>2841</code> reads chevauchent le g\'e8ne d'int\'e9r\'eat.\
+\
+\
+## Visualisation : \
+ \
+Utilisez <strong class="tool">IGV</strong> @igv sous [sa version en ligne](https://igv.org/app/) pour visualiser les alignements sur le g\'e8ne. Faites une capture d'\'e9cran du g\'e8ne entier.\
+\
+See picture:trmNF_intersection https://github.com/mkapsimali/DuBii2021/blob/master/trmNF_intersection.png\
+It was obtained by uploading on IGV the genome (fna and fnai), SRR10390685_on_GCF_000009045.1_ASM904v1_genomic.sort.bam and bai and the result_intersection.bam and the indexed bai (generated with samtools index).\
+\
+The whole project is on shared/projects/dubii2021/mkapsimali/projet_M45. See also tree https://github.com/mkapsimali/DuBii2021/blob/master/Tree.png\
+\
+# References}
